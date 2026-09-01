@@ -1,27 +1,12 @@
+import importlib
 import subprocess
 import time
-import ollama
 import asyncio
-import nest_asyncio
 import os
-import requests
-from transformers import pipeline
-import nltk
-from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
-from nltk.tokenize import word_tokenize
 import re
 from typing import Optional, List, Dict, Any
-import torch
 import multiprocessing
-from sklearn.metrics import accuracy_score, f1_score
-import pandas as pd
 from datetime import datetime
-from google.oauth2 import service_account
-from google.api_core.exceptions import NotFound
-import pandas_gbq
-
-import matplotlib.pyplot as plt
-import numpy as np
 
 class ModelVisualizer:
     """
@@ -55,11 +40,14 @@ class ModelVisualizer:
             plot_type: str = 'bar',
             metrics: List[str] = None,
             colors: Optional[List[str]] = None,
-            data: pd.DataFrame = None,
+            data: Any = None,
             savefig_path: str = None,
             max_cols_per_row: int = 3,
+            show_figure: bool = False,
+            imported_modules: Dict[str, Any] = None,
+            os_path: str = os.path.dirname(os.path.abspath(__file__)),
             **options
-    ) -> plt:
+    ) -> Any:
         """
         Public method to visualize and save charts.
 
@@ -75,6 +63,14 @@ class ModelVisualizer:
         Returns:
             plt: Matplotlib Pyplot of the built chart
         """
+        
+        matplotlib = imported_modules['matplotlib']
+        plt = importlib.import_module('matplotlib.pyplot')
+        numpy = imported_modules['numpy']
+        np = numpy
+        pyarrow = imported_modules['pyarrow']
+
+
         if colors is None:
             colors = ModelVisualizer.DEFAULT_COLORS
 
@@ -178,12 +174,13 @@ class ModelVisualizer:
         plt.tight_layout()
 
         if savefig_path:
-            save_dir = os.path.dirname(savefig_path)
+            save_dir = os.path.dirname(os.path.join(os_path, savefig_path))
             if save_dir:
                 os.makedirs(save_dir, exist_ok=True)
             var_dpi = options.get('dpi', 300)
             plt.savefig(savefig_path, dpi=var_dpi, bbox_inches='tight')
 
-        plt.show()
+        if (show_figure):
+            plt.show()
 
         return plt

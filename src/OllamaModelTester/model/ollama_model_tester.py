@@ -1,40 +1,37 @@
+import importlib
 import subprocess
 import time
-import ollama
 import asyncio
-import nest_asyncio
 import os
-import requests
-from transformers import pipeline
-import nltk
-from nltk.translate.bleu_score import sentence_bleu, SmoothingFunction
-from nltk.tokenize import word_tokenize
 import re
 from typing import Optional, List, Dict, Any
-import torch
 import multiprocessing
-from sklearn.metrics import accuracy_score, f1_score
-import pandas as pd
 from datetime import datetime
-from google.oauth2 import service_account
-from google.api_core.exceptions import NotFound
-import pandas_gbq
-
-import matplotlib.pyplot as plt
-import numpy as np
 import platform
 
-from .modelvisualizer import ModelVisualizer
-
-nest_asyncio.apply()
+from .model_visualizer import ModelVisualizer
+from src.OllamaModelTester.services.import_module import ImportModule as im
+from src.OllamaModelTester.services.package_install import PackageInstall as packi
+from src.OllamaModelTester.services.execute_cmd import ExecuteCommand as ec
 
 
 class OllamaModelTester:
 
-    def __init__(self, host, port, models, install_packages: bool = True):
+    def __init__(
+        self,
+        host: str = '127.0.0.1',
+        port: int = 11434,
+        models: List[str] = [],
+        install_packages: bool = True,
+        show_figure: bool = True,
+        is_libraries_exec_requested: bool = True,
+        install_requirements_txt: bool = False,
+        cmd_timeout: int = 120,
+        os_path: str = os.path.dirname(os.path.abspath(__file__))
+    ):
         self.host = host
         self.port = port
-        self.models = models if models else []
+        self.models = models
         self.process = None
         self.model_results = []
         self.validation_results = []
@@ -43,6 +40,12 @@ class OllamaModelTester:
         self.key_path = None
         self.credentials = None
         self.install_packages = install_packages
+        self.show_figure = show_figure
+        self.is_libraries_exec_requested = is_libraries_exec_requested
+        self.install_requirements_txt = install_requirements_txt
+        self.cmd_timeout = cmd_timeout
+        self.os_path = os_path
+        self.imported_modules = None
 
     def get_data(self, key):
         return getattr(self, key)
@@ -50,7 +53,7 @@ class OllamaModelTester:
     def set_data(self, key, val):
         setattr(self, key, val)
 
-    def pull_model(self, model_name):
+    def pull_model(self, model_name: str = None):
         result = subprocess.run(
             ['ollama', 'pull', model_name],
             capture_output=True,
@@ -63,7 +66,7 @@ class OllamaModelTester:
         else:
             print(f'"{model_name}" model pull threw an error')
 
-    def pull_models(self, models):
+    def pull_models(self, models: List[str] = []):
         models = models if models else self.models
         for model_name in models:
             result = subprocess.run(
@@ -78,7 +81,7 @@ class OllamaModelTester:
             else:
                 print(f'"{model_name}" model pull threw an error')
 
-    def compare_models(self, prompt_text, models, **options):
+    def compare_models(self, prompt_text: str = None, models: List[str] = None, **options):
         var_models = models if models else self.models
         var_options = {
             'temperature': options.get('temperature', 0.1),
@@ -96,7 +99,7 @@ class OllamaModelTester:
                 ttft_start = time.time()
                 start=time.time()
 
-                response_generator = ollama.generate(
+                response_generator = self.ollama.generate(
                     model=model_name,
                     prompt=prompt_text,
                     options=var_options,
@@ -172,7 +175,12 @@ class OllamaModelTester:
                 print(f'Testing model "{model_name}" threw an error')
         return self.model_results
 
-    def validate_evaluator(self, prompt_text: str = None, generated_text: str = None, human_label: str = None) -> List[Dict[str, Any]]:
+    def validate_evaluator(
+        self,
+        prompt_text: str = None,
+        generated_text: str = None,
+        human_label: str = None
+    ) -> List[Dict[str, Any]]:
         """
         Meeting 2 (Extended)
         Public method: Validate human generated text and label
@@ -192,8 +200,8 @@ class OllamaModelTester:
             human_labels = [human_label]
             predictions = [predicted]
 
-            overall_accuracy = accuracy_score(human_labels, predictions)
-            overall_f1_score = f1_score(human_labels, predictions, pos_label='hallucinated', average='weighted')
+            overall_accuracy = self.accuracy_score(human_labels, predictions)
+            overall_f1_score = self.f1_score(human_labels, predictions, pos_label='hallucinated', average='weighted')
 
             result.update({
                 'human_label': human_label,
@@ -232,7 +240,7 @@ class OllamaModelTester:
         files_to_export = ['model_results', 'validation_results']
         for file_name in files_to_export:
             filepath = os.path.join(folder_path, f'{file_name}.csv')
-            df = pd.DataFrame(self.get_data(file_name))
+            df = self.pd.DataFrame(self.get_data(file_name))
             if 'timestamp' not in df.columns:
                 df['timestamp'] = datetime.now()
             df.to_csv(filepath, index=False)
@@ -248,14 +256,19 @@ class OllamaModelTester:
         for file_name in files_to_import:
             filepath = os.path.join(folder_path, f'{file_name}.csv')
             if (os.path.exists(filepath)):
-                df = pd.read_csv(filepath)
+                df = self.pd.read_csv(filepath)
                 model_data = df.to_dict('records')
                 self.set_data(file_name, model_data)
                 print(f'"{filepath}" imported successfully')
             else:
                 print(f'"{filepath}" NOT imported')
 
-    def export_results_to_gqb(self, project_id: str = None, dataset_id: str = None, if_exists: str = 'append') -> bool:
+    def export_results_to_gqb(
+        self,
+        project_id: str = None,
+        dataset_id: str = None,
+        if_exists: str = 'append'
+    ) -> bool:
         """
         Meeting 3
         Public method to export "model_results" and "validation_results" to Google BigQuery Dataset
@@ -273,10 +286,10 @@ class OllamaModelTester:
             tables_to_export = ['model_results', 'validation_results']
             try:
                 for table_name in tables_to_export:
-                    df = pd.DataFrame(self.get_data(table_name))
+                    df = self.pd.DataFrame(self.get_data(table_name))
                     if ('timestamp' not in df.columns):
                         df['timestamp'] = datetime.now()
-                    pandas_gbq.to_gbq(
+                    self.pandas_gbq.to_gbq(
                         df,
                         f'{project_id}.{dataset_id}.{table_name}',
                         project_id = project_id,
@@ -315,7 +328,7 @@ class OllamaModelTester:
                       FROM `{project_id}.{dataset_id}.{table_name}`
                      LIMIT {limits}
                     """
-                    df = pandas_gbq.read_gbq(
+                    df = self.pandas_gbq.read_gbq(
                         query,
                         project_id = project_id,
                         credentials = self.credentials
@@ -325,7 +338,7 @@ class OllamaModelTester:
                     self.set_data(table_name, model_data)
                     is_imported = True
                     print(f'Table "{table_name}" import is successful')
-            except NotFound as e:
+            except self.NotFound as e:
                 is_imported = False
                 print(f'Table "{table_name}" is not found')
             except Exception as e:
@@ -349,7 +362,7 @@ class OllamaModelTester:
         savefig_path: str = None,
         max_cols_per_row: int = 3,
         **options
-    ) -> plt:
+    ) -> Any:
         """
         Meeting 4
         Public method to visualize internal resutls from self.model_results, self.validation_results and query SQL statements to Google BigQuery Dataset.
@@ -372,7 +385,7 @@ class OllamaModelTester:
             var_columns = metric['columns']
             var_self_data = self.get_data(var_data) if var_data in VALID_DATA_SOURCES else []
             columns_to_select = ['model', *var_columns] if var_data == 'model_results' else var_columns
-            var_df = pd.DataFrame(var_self_data)[columns_to_select] if var_data in VALID_DATA_SOURCES else pd.DataFrame()
+            var_df = self.pd.DataFrame(var_self_data)[columns_to_select] if var_data in VALID_DATA_SOURCES else self.pd.DataFrame()
 
             if (var_data == 'model_results'):
                 var_df['row_num'] = var_df.groupby('model').cumcount()
@@ -387,7 +400,7 @@ class OllamaModelTester:
                 try:
                     var_project_id = metric['project_id']
                     query = metric['sql']
-                    var_df = pandas_gbq.read_gbq(
+                    var_df = self.pandas_gbq.read_gbq(
                         query,
                         project_id = var_project_id,
                         credentials = self.credentials
@@ -399,12 +412,12 @@ class OllamaModelTester:
 
                     # print(var_df)
                     all_dfs.append(var_df)
-                except NotFound as e:
+                except self.NotFound as e:
                     print(f'Exception NotFound: {str(e)}')
                 except Exception as e:
                     print(f'Exception: {str(e)}')
 
-        final_df = pd.concat(all_dfs, axis=1)
+        final_df = self.pd.concat(all_dfs, axis=1)
 
         fig = ModelVisualizer.visualize_chart(
             plot_type = plot_type,
@@ -413,7 +426,10 @@ class OllamaModelTester:
             data = final_df,
             savefig_path = savefig_path,
             max_cols_per_row = max_cols_per_row,
-            options = options
+            options = options,
+            show_figure = self.show_figure,
+            os_path = self.os_path,
+            imported_modules = self.imported_modules
         )
         return fig
 
@@ -421,13 +437,13 @@ class OllamaModelTester:
         os.environ['OLLAMA_HOST'] = f'{self.host}:{self.port}'
 
         try:
-            nltk.data.find('tokenizers/punkt_tab/english')
+            self.nltk.data.find('tokenizers/punkt_tab/english')
         except LookupError:
-            nltk.download('punkt_tab')
-            nltk.download('punkt')
-            nltk.download('averaged_perceptron_tagger_eng')
+            self.nltk.download('punkt_tab')
+            self.nltk.download('punkt')
+            self.nltk.download('averaged_perceptron_tagger_eng')
 
-        self.nli_model = pipeline('text-classification',
+        self.nli_model = self.pipeline('text-classification',
             model='cross-encoder/nli-deberta-v3-base',
             device=0
         )
@@ -438,7 +454,7 @@ class OllamaModelTester:
             json_files = [f for f in files if f.endswith('.json')]
             self.key_path = f'{folder_path}/{json_files[0]}'
         try:
-            self.credentials = service_account.Credentials.from_service_account_file(
+            self.credentials = self.service_account.Credentials.from_service_account_file(
                 self.key_path,
                 scopes = ['https://www.googleapis.com/auth/cloud-platform']
             )
@@ -447,21 +463,12 @@ class OllamaModelTester:
         print('Class OllamaModelTester is initialized')
 
     def __start_server(self) -> 'OllamaModelTester':
-        self.process = subprocess.Popen(
-            ['ollama', 'serve'],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            env=os.environ,
-            encoding='utf-8',
-            errors='replace'
-        )
+        self.process = ec.run_popen(command='ollama serve', text=True)
         time.sleep(self.dft_sleep_sec)
-        result = subprocess.run(
-            ['curl', '-s', f'http://{self.host}:{self.port}/api/tags'],
-            capture_output=True,
-            text=True,
-            encoding='utf-8',
-            errors='replace'
+        result = ec.run_command(
+            command=f'curl -s http://{self.host}:{self.port}/api/tags',
+            check=True,
+            timeout=self.cmd_timeout
         )
         if (result.returncode == 0):
             print('Ollama server is started')
@@ -474,7 +481,7 @@ class OllamaModelTester:
         print('Ollama server is terminated')
 
 
-    def __clean_text(self, text):
+    def __clean_text(self, text: str = None):
         """
         Meeting 2
         Private method: Preprocess text for tokenization
@@ -490,7 +497,7 @@ class OllamaModelTester:
         text = ' '.join(text.split())
         return text
 
-    def __calculate_scores(self, reference_text, generated_text):
+    def __calculate_scores(self, reference_text: str = None, generated_text: str = None):
         """
         Meeting 2
         Private method: Calculate multiple BLUE score variants
@@ -533,13 +540,13 @@ class OllamaModelTester:
             cleaned_ref = self.__clean_text(reference_text)
             cleaned_gen = self.__clean_text(generated_text)
 
-            reference_tokens = word_tokenize(cleaned_ref)
-            generated_tokens = word_tokenize(cleaned_gen)
+            reference_tokens = self.word_tokenize(cleaned_ref)
+            generated_tokens = self.word_tokenize(cleaned_gen)
 
             if (not reference_tokens or not generated_tokens):
                 return dict_scores
 
-            sentences = nltk.sent_tokenize(generated_text)
+            sentences = self.nltk.sent_tokenize(generated_text)
             if not sentences:
                 return dict_scores
 
@@ -566,13 +573,13 @@ class OllamaModelTester:
             dict_scores['faithfulness_score'] = dict_scores['factual'] - (dict_scores['contradictions'] * 0.5)
 
             # Calculating BLEU scores
-            smoothing = SmoothingFunction()
+            smoothing = self.SmoothingFunction()
             var_weights = (0.25, 0.25, 0.25, 0.25)
 
-            dict_scores['bleu_1'] = sentence_bleu([reference_tokens], generated_tokens, weights=(1.0, 0.0, 0.0, 0.0), smoothing_function=smoothing.method1)
-            dict_scores['bleu_2'] = sentence_bleu([reference_tokens], generated_tokens, weights=(0.5, 0.5, 0.0, 0.0), smoothing_function=smoothing.method1)
-            dict_scores['bleu_3'] = sentence_bleu([reference_tokens], generated_tokens, weights=(0.33, 0.33, 0.33, 0.0), smoothing_function=smoothing.method1)
-            dict_scores['bleu_4'] = sentence_bleu([reference_tokens], generated_tokens, weights=(var_weights), smoothing_function=smoothing.method1)
+            dict_scores['bleu_1'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=(1.0, 0.0, 0.0, 0.0), smoothing_function=smoothing.method1)
+            dict_scores['bleu_2'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=(0.5, 0.5, 0.0, 0.0), smoothing_function=smoothing.method1)
+            dict_scores['bleu_3'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=(0.33, 0.33, 0.33, 0.0), smoothing_function=smoothing.method1)
+            dict_scores['bleu_4'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=(var_weights), smoothing_function=smoothing.method1)
             dict_scores['bleu_avg'] = sum([
                 dict_scores['bleu_1'],
                 dict_scores['bleu_2'],
@@ -581,14 +588,14 @@ class OllamaModelTester:
             ]) / 4.0
 
             # Calculating smoothing methods
-            dict_scores['bleu_smoothing_method0'] = sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method0)
-            dict_scores['bleu_smoothing_method1'] = sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method1)
-            dict_scores['bleu_smoothing_method2'] = sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method2)
-            dict_scores['bleu_smoothing_method3'] = sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method3)
-            dict_scores['bleu_smoothing_method4'] = sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method4)
-            dict_scores['bleu_smoothing_method5'] = sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method5)
-            dict_scores['bleu_smoothing_method6'] = sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method6)
-            dict_scores['bleu_smoothing_method7'] = sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method7)
+            dict_scores['bleu_smoothing_method0'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method0)
+            dict_scores['bleu_smoothing_method1'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method1)
+            dict_scores['bleu_smoothing_method2'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method2)
+            dict_scores['bleu_smoothing_method3'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method3)
+            dict_scores['bleu_smoothing_method4'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method4)
+            dict_scores['bleu_smoothing_method5'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method5)
+            dict_scores['bleu_smoothing_method6'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method6)
+            dict_scores['bleu_smoothing_method7'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method7)
 
             return dict_scores
         except Exception as e:
@@ -614,15 +621,15 @@ class OllamaModelTester:
             'context_length': 'unknown'
         }
         try:
-            if (torch.cuda.is_available()):
-                gpu_name = torch.cuda.get_device_name(0)
+            if (self.torch.cuda.is_available()):
+                gpu_name = self.torch.cuda.get_device_name(0)
                 info['hardware'] = f'GPU: {gpu_name}'
             else:
                 cpu_count = multiprocessing.cpu_count()
                 info['hardware'] = f'CPU: {cpu_count} cores'
 
             if (model_name):
-                response = requests.get(f'http://{self.host}:{self.port}/api/tags')
+                response = self.requests.get(f'http://{self.host}:{self.port}/api/tags')
                 if (response.status_code == 200):
                     data = response.json()
                     models = data.get('models', [])
@@ -639,89 +646,51 @@ class OllamaModelTester:
         finally:
             return info
 
-    def __run_command(self, command: str = '', check=True):
-        try:
-            result = subprocess.run(
-                command,
-                check=check,
-                shell=True,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace'
-            )
-            print(f'Command succeded: {command}')
-            if (result.stdout):
-                print(f'Output: {result.stdout}')
-        except Exception as e:
-            print(f'Exception thrown: {str(e)}')
-
-    def __run_popen(self, command: str = '', text: bool = True):
-        try:
-            command = command.split()
-            subprocess.Popen(
-                command,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                env=os.environ,
-                shell=False,
-                text=text,
-                encoding='utf-8',
-                errors='replace'
-            )
-        except Exception as e:
-            print(f'Exception thrown: {str(e)}')
-
-    def __windows_install(self):
-        try:
-            rcommands = [
-                'pip install -r requirements.txt'
-            ]
-            for cmd in rcommands:
-                self.__run_command(command=cmd, check=True)
-
-            pcommands = [
-                'winget install Ollama.Ollama'
-            ]
-            for cmd in pcommands:
-                self.__run_popen(command=cmd, text=True)
-        except Exception as e:
-            print(f'Exception thrown: {str(e)}')
-
-    def __linux_install(self):
-        print('Installing packages on Linux')
-
-        # Confirm sudo privileges
-        if (os.geteuid() != 0):
-            commands = [
-                'sudo apt update',
-                'sudo apt install -y pciutils',
-                'sudo apt install -y zstd',
-                'curl -fsSL https://ollama.com/install.sh | sudo sh'
-                'pip install -r requirements.txt'
-            ]
-
-            for cmd in commands:
-                try:
-                    self.__run_command(command=cmd, check=True)
-                except Exception as e:
-                    print(f'Exception thrown: {str(e)}')
-
     def __package_installation(self):
-        if (self.install_packages):
-            print('Installing packages')
-            osystem = platform.system()
-            print(f'Detected OS: {osystem}')
+        packi.package_installation(
+            install_packages=self.install_packages,
+            install_requirements_txt=self.install_requirements_txt,
+            timeout=self.cmd_timeout
+        )
 
-            if (osystem == 'Windows'):
-                self.__windows_install()
-            elif (osystem == 'Linux'):
-                self.__linux_install()
-            else:
-                print(f'Unsupported OS: {osystem}')
+    def _library_imports(self):
+        imported_modules = im.import_all(
+            is_libraries_exec_requested=self.is_libraries_exec_requested,
+            timeout=self.cmd_timeout
+        )
+        self.imported_modules = imported_modules
 
+        self.ollama = imported_modules['ollama']
+        self.nest_asyncio = imported_modules['nest_asyncio']
+        self.requests = imported_modules['requests']
+        self.transformers = imported_modules['transformers']
+        self.pipeline = getattr(self.transformers, 'pipeline')
+        self.nltk = self.imported_modules['nltk']
+        self.bleu_score = importlib.import_module('nltk.translate.bleu_score')
+        self.sentence_bleu = getattr(self.bleu_score, 'sentence_bleu')
+        self.SmoothingFunction = getattr(self.bleu_score, 'SmoothingFunction')
+        self.tokenize = importlib.import_module('nltk.tokenize')
+        self.word_tokenize = getattr(self.tokenize, 'word_tokenize')
+        self.torch = self.imported_modules['torch']
+        self.sklearn = self.imported_modules['sklearn']
+        self.metrics = importlib.import_module('sklearn.metrics')
+        self.accuracy_score = getattr(self.metrics, 'accuracy_score')
+        self.f1_score = getattr(self.metrics, 'f1_score')
+        self.pandas = self.imported_modules['pandas']
+        self.pd = self.pandas
+        self.google = self.imported_modules['google']
+        self.service_account = importlib.import_module('google.oauth2.service_account')
+        self.exceptions = importlib.import_module('google.api_core.exceptions')
+        self.NotFound = self.exceptions.NotFound
+        self.pandas_gbq = self.imported_modules['pandas_gbq']
+        self.matplotlib = self.imported_modules['matplotlib']
+        self.plt = importlib.import_module('matplotlib.pyplot')
+        self.numpy = self.imported_modules['numpy']
+        self.np = self.numpy
+    
     def __enter__(self):
         self.__package_installation()
+        self._library_imports()
         self.__initialization()
         self.__start_server()
         return self
