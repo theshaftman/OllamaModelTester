@@ -1,5 +1,5 @@
-from .model.modelvisualizer import ModelVisualizer
-from .model.ollamamodeltester import OllamaModelTester
+from .model.ollama_model_tester import OllamaModelTester
+from .model.model_visualizer import ModelVisualizer
 
-__vesion__ = '0.0.1'
-__all__ = ['ModelVisualizer', 'OllamaModelTester']
+__vesion__ = '0.0.2'
+__all__ = ['OllamaModelTester', 'ModelVisualizer']
