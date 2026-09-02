@@ -1,7 +1,7 @@
 import os
 import OllamaModelTester as omt
 
-i_models = ['tinyllama', 'gemma2:2b', 'llama3.2:1b', 'smollm2:135m']
+i_models = ['tinyllama']
 i_prompt_text = """Summarize this text
 
 Intel Corp. raised $20 billion in an upsized share sale, a third more than it was targeting when it announced the deal Monday morning.
@@ -56,7 +56,7 @@ with omt.OllamaModelTester(
     is_libraries_exec_requested = True,    # install pip packages internal without requirements.txt
     install_requirements_txt = False,      # install pip packages from requirements.txt
     cmd_timeout = 120,
-    os_path = os.path.dirname(os.path.abspath(__file__))
+    os_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ) as om_tester:
     om_tester.import_results_from_csv()
     """
@@ -82,4 +82,4 @@ with omt.OllamaModelTester(
     om_tester.visualize_results(plot_type='pie', metrics=i_metrics, colors=i_colors, savefig_path=f'charts/pie_chart.png', max_cols_per_row=2)
 
     om_tester.export_results_to_csv()
-    om_tester.export_results_to_gqb('llm-practical-experiment', 'llm_model_evaluation', 'replace')
+    # om_tester.export_results_to_gqb('llm-practical-experiment', 'llm_model_evaluation', 'replace')

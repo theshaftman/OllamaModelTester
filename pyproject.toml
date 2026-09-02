@@ -4,14 +4,14 @@ build-backend = "hatchling.build"
 
 [project]
 name = "OllamaModelTester"
-version = "0.0.2"
+version = "0.0.3"
 authors = [
     { name="Mariyan Vasilev Apostolov", email="mariyan.apostolov89@gmail.com" }
 ]
 maintainers = [
     { name="Mariyan Vasilev Apostolov", email="mariyan.apostolov89@gmail.com" }
 ]
-description = "A short description of the package"
+description = "Test, evaluate, and visualize Ollama models with hallucination detection, performance metrics, and BigQuery integration"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.13"
