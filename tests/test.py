@@ -53,8 +53,8 @@ with omt.OllamaModelTester(
     models=i_models,
     install_packages=True,
     show_figure=False,
-    is_libraries_exec_requested = False,    # install pip packages internal without requirements.txt
-    install_requirements_txt = True,      # install pip packages from requirements.txt
+    is_libraries_exec_requested = True,    # install pip packages internal without requirements.txt
+    install_requirements_txt = False,      # install pip packages from requirements.txt
     cmd_timeout = 120,
     os_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ) as om_tester:
