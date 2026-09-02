@@ -4,6 +4,7 @@ from typing import Dict, Any
 
 from .execute_cmd import ExecuteCommand as ec
 
+
 class ImportModule():
 
     REQUIRED_VERSIONS = {
@@ -36,7 +37,10 @@ class ImportModule():
                 if (is_libraries_exec_requested):
                     timeout = 600 if package_name == 'torch' and timeout < 600 else timeout
                     var_command = f'pip install {package_name}=={required_version}'
-                    ec.run_command(command=var_command, check=True, timeout=timeout)
+                    try:
+                        ec.run_command(command=var_command, check=True, timeout=timeout)
+                    except Exception as e:
+                        print(f'Execption thrown: {str(e)}')
 
                 module = importlib.import_module(required_import)
                 loaded_modules[required_import] = module

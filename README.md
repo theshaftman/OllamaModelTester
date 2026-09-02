@@ -6,12 +6,12 @@ A comprehensive Python framework for testing, evaluating, and visualizing Ollama
 
 ## Features
 
-- **Multi-Model Testing**: Test multiple Ollama models simultaneously (tinyllama, gemma2:2b, llama3.2:1b, smollm2:135m)
+- **Multi-Model Testing**: Test multiple Ollama models simultaneously
 - **Performance Metrics**: Track TTFT (Time to First Token), tokens/second, latency (p50, p95)
 - **Hallucination Detection**: Using NLI (Natural Language Inference) models
-- **Data Export**: Export results to CSV and Google BigQuery
+- **Data Import/Export**: Import/Export results to CSV and Google BigQuery
 - **Visualization**: Built-in chart generation (bar, line, scatter, pie)
-- **Cross-Platform**: Works on Windows, Linux, and macOS
+- **Cross-Platform**: Works on Windows and Linux
 
 ---
 
@@ -26,7 +26,7 @@ A comprehensive Python framework for testing, evaluating, and visualizing Ollama
 
 ## Installation
 
-### Option 1: Install from PyPI (Recommended)
+### Install from PyPI (Recommended)
 
 ```bash
 pip install OllamaModelTester
@@ -35,6 +35,7 @@ pip install OllamaModelTester
 ## Complete Example
 
 ```bash
+import os
 import OllamaModelTester as omt
 
 # Define models and test data
@@ -53,7 +54,20 @@ i_metrics = [{
 }]
 i_colors = ['red', 'green', 'blue', 'purple']
 
-with omt.OllamaModelTester(host='127.0.0.1', port=11434, models=i_models, install_packages=False) as om_tester:
+with omt.OllamaModelTester(
+    host='127.0.0.1',
+    port=11434,
+    models=i_models,
+    install_packages=True,
+    show_figure=False,
+    is_libraries_exec_requested = True,    # install pip packages internal without requirements.txt
+    install_requirements_txt = False,      # install pip packages from requirements.txt
+    cmd_timeout = 120,
+    os_path = os.path.dirname(os.path.abspath(__file__))
+) as om_tester:
+    # Import results from CSV
+    om_tester.import_results_from_csv()
+
     # Validate evaluator
     var_validate_elevator = om_tester.validate_evaluator(
         prompt_text=i_prompt_text,
@@ -61,17 +75,21 @@ with omt.OllamaModelTester(host='127.0.0.1', port=11434, models=i_models, instal
         human_label=i_human_label
     )
 
-    # Pull and test models
+    # Pull all models
     om_tester.pull_models(models=None)
     # Compare all models
     om_tester.compare_models(prompt_text=i_prompt_text, models=None)
 
-    # Generate visualizations
-    om_tester.visualize_results(plot_type='bar', metrics=i_metrics, colors=i_colors, savefig_path='charts/bar_chart.png', max_cols_per_row=2)
-    om_tester.visualize_results(plot_type='plot', metrics=i_metrics, colors=i_colors, savefig_path='charts/plot_chart.png', max_cols_per_row=2)
+    # Generate visualizations    
+    om_tester.visualize_results(plot_type='bar', metrics=i_metrics, colors=i_colors, savefig_path=f'charts/bar_chart.png', max_cols_per_row=2)
+    om_tester.visualize_results(plot_type='plot', metrics=i_metrics, colors=i_colors, savefig_path=f'charts/plot_chart.png', max_cols_per_row=2)
+    om_tester.visualize_results(plot_type='scatter', metrics=i_metrics, colors=i_colors, savefig_path=f'charts/scatter_chart.png', max_cols_per_row=2)
+    om_tester.visualize_results(plot_type='pie', metrics=i_metrics, colors=i_colors, savefig_path=f'charts/pie_chart.png', max_cols_per_row=2)
 
-    # Export results
+
+    # Export results to CSV
     om_tester.export_results_to_csv()
+
 ```
 
 ## Project Structure
@@ -80,17 +98,22 @@ OllamaModelTester/
 ├── src/
 │   └── OllamaModelTester/
 │       ├── __init__.py          # Package entry point
-│       ├── main.py              # Main OllamaModelTester class
-│       └── model_visualizer.py  # Visualization utilities
+│       ├── model/
+│       ├   ├── ollama_model_tester.py  # Main OllamaModelTester class
+│       ├   └── model_visualizer.py     # Visualization utilities
+│       └── services/
+│           ├── execute_cmd.py          # Execute commands class
+│           ├── package_install.py      # Install packages class
+│           └── import_module.py        # Import modules class
 ├── tests/
-│   └── test_ollama.py          # Unit tests
+│   └── test.py                     # Tests folder
 ├── credentials/
-│   └── service-account-key.json # Google Cloud credentials
+│   └── service-account-key.json    # Google Cloud IAM credentials
 ├── documents/
-│   ├── model_results.csv       # Model test results
-│   └── validation_results.csv  # Validation results
+│   ├── model_results.csv           # Model test results
+│   └── validation_results.csv      # Validation results
 ├── charts/
-│   ├── bar_chart.png           # Generated visualizations
+│   ├── bar_chart.png               # Generated visualizations
 │   ├── plot_chart.png
 │   ├── scatter_chart.png
 │   └── pie_chart.png

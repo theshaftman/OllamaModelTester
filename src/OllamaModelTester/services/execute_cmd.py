@@ -1,12 +1,13 @@
 import os
 import subprocess
 import time
+from typing import Any
 
 
 class ExecuteCommand():
 
     @staticmethod
-    def run_command(command: str = '', check=True, timeout: int = 120):
+    def run_command(command: str = '', check=True, timeout: int = 120) -> Any:
         var_subprocess = None
         try:
             var_subprocess = subprocess.run(
@@ -16,9 +17,9 @@ class ExecuteCommand():
                 capture_output=True,
                 text=True,
                 encoding='utf-8',
-                errors='replace'
+                errors='replace',
+                timeout=timeout
             )
-            time.sleep(1)
             print(f'Command succeded: {command}')
             if (var_subprocess.stdout):
                 print(f'Output: {var_subprocess.stdout}')
@@ -28,7 +29,7 @@ class ExecuteCommand():
             return var_subprocess
 
     @staticmethod
-    def run_popen(command: str = '', text: bool = True):
+    def run_popen(command: str = '', text: bool = True) -> Any:
         var_subprocess = None
         try:
             command = command.split()
@@ -42,7 +43,6 @@ class ExecuteCommand():
                 encoding='utf-8',
                 errors='replace'
             )
-            time.sleep(1)
         except Exception as e:
             print(f'Exception thrown: {str(e)}')
         finally:

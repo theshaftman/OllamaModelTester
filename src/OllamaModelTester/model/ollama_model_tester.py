@@ -1,21 +1,22 @@
 import importlib
-import subprocess
 import time
-import asyncio
 import os
 import re
 from typing import Optional, List, Dict, Any
 import multiprocessing
 from datetime import datetime
-import platform
 
 from .model_visualizer import ModelVisualizer
-from src.OllamaModelTester.services.import_module import ImportModule as im
-from src.OllamaModelTester.services.package_install import PackageInstall as packi
-from src.OllamaModelTester.services.execute_cmd import ExecuteCommand as ec
+from OllamaModelTester.services.import_module import ImportModule as im
+from OllamaModelTester.services.package_install import PackageInstall as packi
+from OllamaModelTester.services.execute_cmd import ExecuteCommand as ec
 
 
 class OllamaModelTester:
+    """
+    OllamaModelTester
+    A comprehensive Python framework for testing, evaluating, and visualizing Ollama language models with built-in hallucination detection, performance metrics, and Google BigQuery integration.
+    """
 
     def __init__(
         self,
@@ -29,6 +30,20 @@ class OllamaModelTester:
         cmd_timeout: int = 120,
         os_path: str = os.path.dirname(os.path.abspath(__file__))
     ):
+        """
+        OllamaModelTester initialization
+
+        Args:
+            host (str): Ollama server host
+            port (int): Ollama server port
+            models (List[str]): List of selected models
+            install_packages (bool): Install packages for OS
+            show_figure (bool): Show figure when method ".visualize_results" is executed
+            is_libraries_exec_requested (bool): Install internal packages
+            install_requirements_txt (bool): Install packages from "requirements.txt" file
+            cmd_timeout (int): Standard command timeout
+            os_path (str): Source path to use folders 'credentials', 'documents' and charts
+        """
         self.host = host
         self.port = port
         self.models = models
@@ -47,41 +62,63 @@ class OllamaModelTester:
         self.os_path = os_path
         self.imported_modules = None
 
-    def get_data(self, key):
+    def get_data(self, key) -> Any:
         return getattr(self, key)
 
-    def set_data(self, key, val):
+    def set_data(self, key, val) -> None:
         setattr(self, key, val)
 
-    def pull_model(self, model_name: str = None):
-        result = subprocess.run(
-            ['ollama', 'pull', model_name],
-            capture_output=True,
-            text=True,
-            encoding='utf-8',
-            errors='replace'
-        )
+    def pull_model(self, model_name: str = None) -> None:
+        """
+        Public method: Pull a selected method
+
+        Args:
+            model_name (str): Model name to pull
+
+        Returns:
+            None
+        """
+        result = ec.run_command(command=f'ollama pull {model_name}', check=True, timeout=self.cmd_timeout)
         if (result.returncode == 0):
             print(f'"{model_name}" model is pulled successfully!')
         else:
             print(f'"{model_name}" model pull threw an error')
 
-    def pull_models(self, models: List[str] = []):
+    def pull_models(self, models: List[str] = []) -> None:
+        """
+        Public method: Pull a selected list of methods
+
+        Args:
+            model_name (List[str]): List of model names to pull
+
+        Returns:
+            None
+        """
         models = models if models else self.models
         for model_name in models:
-            result = subprocess.run(
-                ['ollama', 'pull', model_name],
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace'
-            )
+            result = ec.run_command(f'ollama pull {model_name}', check=True, timeout=self.cmd_timeout)
             if (result.returncode == 0):
                 print(f'"{model_name}" model is pulled successfully!')
             else:
                 print(f'"{model_name}" model pull threw an error')
 
-    def compare_models(self, prompt_text: str = None, models: List[str] = None, **options):
+    def compare_models(
+        self,
+        prompt_text: str = None,
+        models: List[str] = None,
+        **options
+    ) -> List[Dict[str, Any]]:
+        """
+        Public method: Compare selected or internal added models
+
+        Args:
+            prompt_text (str): Prompt original text
+            models (List[str]): Selected models to compare
+            **options: Kwargs additional options
+
+        Returns:
+            List[Dict[str, Any]]: Compared models with scores
+        """
         var_models = models if models else self.models
         var_options = {
             'temperature': options.get('temperature', 0.1),
@@ -173,6 +210,7 @@ class OllamaModelTester:
                     'context_length': 'unknown'
                 })
                 print(f'Testing model "{model_name}" threw an error')
+
         return self.model_results
 
     def validate_evaluator(
@@ -201,7 +239,7 @@ class OllamaModelTester:
             predictions = [predicted]
 
             overall_accuracy = self.accuracy_score(human_labels, predictions)
-            overall_f1_score = self.f1_score(human_labels, predictions, pos_label='hallucinated', average='weighted')
+            overall_f1_score = self.f1_score(human_labels, predictions, pos_label='hallucinated', average='binary')
 
             result.update({
                 'human_label': human_label,
@@ -234,7 +272,7 @@ class OllamaModelTester:
         Meeting 3
         Public method to export "model_results" and "validation_results" to CSV in a folder "documents"
         """
-        folder_path = 'documents'
+        folder_path = os.path.join(self.os_path, 'documents')
         if (not os.path.exists(folder_path)):
             os.makedirs(folder_path)
         files_to_export = ['model_results', 'validation_results']
@@ -251,7 +289,7 @@ class OllamaModelTester:
         Meeting 3
         Public method to import "model_results" and "validation_results" from CSV in a folder "documents"
         """
-        folder_path = 'documents'
+        folder_path = os.path.join(self.os_path, 'documents')
         files_to_import = ['model_results', 'validation_results']
         for file_name in files_to_import:
             filepath = os.path.join(folder_path, f'{file_name}.csv')
@@ -274,9 +312,9 @@ class OllamaModelTester:
         Public method to export "model_results" and "validation_results" to Google BigQuery Dataset
 
         Args:
-            project_id(str): Set project ID in Google Cloud
-            dataset_id(str): Set dataset ID in Google BigQuery Dataset
-            if_exists(str): Select if you want to "append" or "replace" the new data in the export
+            project_id (str): Set project ID in Google Cloud
+            dataset_id (str): Set dataset ID in Google BigQuery Dataset
+            if_exists (str): Select if you want to "append" or "replace" the new data in the export
 
         Returns:
             bool: Validation if process is completed successful
@@ -311,9 +349,9 @@ class OllamaModelTester:
         Public method to import "model_results" and "validation_results" from Google BigQuery Dataset
 
         Args:
-            project_id(str): Set project ID in Google Cloud
-            dataset_id(str): Set dataset ID in Google BigQuery Dataset
-            limits(int): Select the maximum limits of results that will be selected from the Google BigQuery Dataset tables
+            project_id (str): Set project ID in Google Cloud
+            dataset_id (str): Set dataset ID in Google BigQuery Dataset
+            limits (int): Select the maximum limits of results that will be selected from the Google BigQuery Dataset tables
 
         Returns:
             bool: Validation if process is completed successful
@@ -348,6 +386,15 @@ class OllamaModelTester:
         return is_imported
 
     def print_results(self, i_results: List[Dict[str, Any]] = []) -> None:
+        """
+        Public method: Print a list of models
+
+        Args:
+            i_results (List[Dict[str, Any]]): List of models
+        
+        Returns:
+            None
+        """
         var_results = i_results if i_results else self.model_results
         for row in var_results:
             print('')
@@ -426,10 +473,10 @@ class OllamaModelTester:
             data = final_df,
             savefig_path = savefig_path,
             max_cols_per_row = max_cols_per_row,
-            options = options,
             show_figure = self.show_figure,
+            imported_modules = self.imported_modules,
             os_path = self.os_path,
-            imported_modules = self.imported_modules
+            options = options
         )
         return fig
 
@@ -463,6 +510,9 @@ class OllamaModelTester:
         print('Class OllamaModelTester is initialized')
 
     def __start_server(self) -> 'OllamaModelTester':
+        """
+        Privatete method: Actions to start the server
+        """
         self.process = ec.run_popen(command='ollama serve', text=True)
         time.sleep(self.dft_sleep_sec)
         result = ec.run_command(
@@ -476,18 +526,21 @@ class OllamaModelTester:
             print('Ollama server is NOT started')
 
     def __stop_server(self) -> None:
+        """
+        Privatete method: Actions to stop the server
+        """
         self.process.terminate()
         self.process.wait()
         print('Ollama server is terminated')
 
 
-    def __clean_text(self, text: str = None):
+    def __clean_text(self, text: str = None) -> str:
         """
         Meeting 2
         Private method: Preprocess text for tokenization
 
         Args:
-            text(str): Text to preprocess
+            text (str): Text to preprocess
 
         Returns:
             str: Preprocessed text
@@ -497,18 +550,17 @@ class OllamaModelTester:
         text = ' '.join(text.split())
         return text
 
-    def __calculate_scores(self, reference_text: str = None, generated_text: str = None):
+    def __calculate_scores(self, reference_text: str = None, generated_text: str = None) -> Dict[str, Any]:
         """
         Meeting 2
         Private method: Calculate multiple BLUE score variants
 
         Args:
-            reference_text(str): Text passed from main
-            generated_text(str): Text generated from AI agent
+            reference_text (str): Text passed from main
+            generated_text (str): Text generated from AI agent
 
         Returns:
             Dict[str, float]
-
         """
         dict_scores = {
             'total': 0.0,
@@ -597,9 +649,9 @@ class OllamaModelTester:
             dict_scores['bleu_smoothing_method6'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method6)
             dict_scores['bleu_smoothing_method7'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method7)
 
-            return dict_scores
         except Exception as e:
             print(f'Error appeared: {str(e)}')
+        finally:
             return dict_scores
 
     def __get_model_info(self, model_name: str = None) -> Dict[str, Any]:
@@ -646,14 +698,21 @@ class OllamaModelTester:
         finally:
             return info
 
-    def __package_installation(self):
-        packi.package_installation(
+    def __package_installation(self) -> bool:
+        """
+        Private method: Installation of packages
+        """
+        return packi.package_installation(
             install_packages=self.install_packages,
             install_requirements_txt=self.install_requirements_txt,
-            timeout=self.cmd_timeout
+            timeout=self.cmd_timeout,
+            os_path=self.os_path
         )
 
-    def _library_imports(self):
+    def _library_imports(self) -> None:
+        """
+        Private method: Import of libraries
+        """
         imported_modules = im.import_all(
             is_libraries_exec_requested=self.is_libraries_exec_requested,
             timeout=self.cmd_timeout
@@ -688,12 +747,12 @@ class OllamaModelTester:
         self.numpy = self.imported_modules['numpy']
         self.np = self.numpy
     
-    def __enter__(self):
+    def __enter__(self) -> 'OllamaModelTester':
         self.__package_installation()
         self._library_imports()
         self.__initialization()
         self.__start_server()
         return self
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
+    def __exit__(self, exc_type, exc_val, exc_tb) -> None:
         self.__stop_server()

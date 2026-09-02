@@ -1,12 +1,7 @@
 import importlib
-import subprocess
-import time
-import asyncio
 import os
-import re
 from typing import Optional, List, Dict, Any
-import multiprocessing
-from datetime import datetime
+
 
 class ModelVisualizer:
     """
@@ -17,14 +12,14 @@ class ModelVisualizer:
                       '#BC4B51', '#5D576B', '#F4A261', '#264653', '#E76F51']
 
     @staticmethod
-    def __ensure_1d(arr):
+    def __ensure_1d(arr) -> Any:
         """Ensure array is 1D, flatten if multi-dimensional."""
         if hasattr(arr, 'ndim') and arr.ndim > 1:
             return arr.flatten()
         return arr
 
     @staticmethod
-    def _group_by_model(data, cols, metric):
+    def _group_by_model(data, cols, metric) -> Dict[str, Any]:
         """Group columns by model name and aggregate values."""
         model_data = {}
         for c in cols:
@@ -58,6 +53,9 @@ class ModelVisualizer:
             data (pd.DataFrame): DataFrame with the data to process
             savefig_path (str): Path to save the figures
             max_cols_per_row (int): Define maximum number of charts per row
+            show_figure (bool): Show figure
+            imported_modules (Dict[str, Any]): A dictionary with imported modules
+            os_path (str): Standard folder to create the charts in
             **options: Keyword arguments to accept any number of named (keyword) inputs, packed into a standard dictionary
 
         Returns:
@@ -178,7 +176,7 @@ class ModelVisualizer:
             if save_dir:
                 os.makedirs(save_dir, exist_ok=True)
             var_dpi = options.get('dpi', 300)
-            plt.savefig(savefig_path, dpi=var_dpi, bbox_inches='tight')
+            plt.savefig(os.path.join(save_dir, os.path.basename(savefig_path)), dpi=var_dpi, bbox_inches='tight')
 
         if (show_figure):
             plt.show()
