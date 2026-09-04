@@ -18,6 +18,78 @@ class OllamaModelTester:
     A comprehensive Python framework for testing, evaluating, and visualizing Ollama language models with built-in hallucination detection, performance metrics, and Google BigQuery integration.
     """
 
+    OM_MODEL_COLUMNS = [
+        {'key': 'model', 'label': 'Model', 'type': 'object'},
+        {'key': 'response', 'label': 'Response', 'type': 'object'},
+        {'key': 'tokens', 'label': 'Tokens', 'type': 'int64'},
+        {'key': 'elapsed_time', 'label': 'Elapsed Time', 'type': 'float64'},
+        {'key': 'ttft', 'label': 'Ttft', 'type': 'float64'},
+        {'key': 'tokens_per_second', 'label': 'Tokens Per Second', 'type': 'float64'},
+        {'key': 'p50_latency', 'label': 'P50 Latency', 'type': 'float64'},
+        {'key': 'p95_latency', 'label': 'P95 Latency', 'type': 'float64'},
+        {'key': 'hardware', 'label': 'Hardware', 'type': 'object'},
+        {'key': 'quantization', 'label': 'Quantization', 'type': 'object'},
+        {'key': 'param_size', 'label': 'Param Size', 'type': 'object'},
+        {'key': 'files_size', 'label': 'Files Size', 'type': 'object'},
+        {'key': 'context_length', 'label': 'Context Length', 'type': 'int64'},
+        {'key': 'total', 'label': 'Total', 'type': 'int64'},
+        {'key': 'factual', 'label': 'Factual', 'type': 'float64'},
+        {'key': 'contradictions', 'label': 'Contradictions', 'type': 'float64'},
+        {'key': 'neutral', 'label': 'Neutral', 'type': 'float64'},
+        {'key': 'confidence', 'label': 'Confidence', 'type': 'float64'},
+        {'key': 'is_hallucinated', 'label': 'Is Hallucinated', 'type': 'float64'},
+        {'key': 'hallucination_severity', 'label': 'Hallucination Severity', 'type': 'float64'},
+        {'key': 'faithfulness_score', 'label': 'Faithfulness Score', 'type': 'float64'},
+        {'key': 'bleu_1', 'label': 'Bleu 1', 'type': 'float64'},
+        {'key': 'bleu_2', 'label': 'Bleu 2', 'type': 'float64'},
+        {'key': 'bleu_3', 'label': 'Bleu 3', 'type': 'float64'},
+        {'key': 'bleu_4', 'label': 'Bleu 4', 'type': 'float64'},
+        {'key': 'bleu_avg', 'label': 'Bleu Avg', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method0', 'label': 'Bleu Smoothing Method0', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method1', 'label': 'Bleu Smoothing Method1', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method2', 'label': 'Bleu Smoothing Method2', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method3', 'label': 'Bleu Smoothing Method3', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method4', 'label': 'Bleu Smoothing Method4', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method5', 'label': 'Bleu Smoothing Method5', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method6', 'label': 'Bleu Smoothing Method6', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method7', 'label': 'Bleu Smoothing Method7', 'type': 'float64'},
+        {'key': 'timestamp', 'label': 'Timestamp', 'type': 'object'}
+    ]
+
+    OM_VALIDATION_COLUMNS = [
+        {'key': 'human_label', 'label': 'Human Label', 'type': 'object'},
+        {'key': 'predicted', 'label': 'Predicted', 'type': 'object'},
+        {'key': 'overall_accuracy', 'label': 'Overall Accuracy', 'type': 'float64'},
+        {'key': 'overall_f1_score', 'label': 'Overall F1 Score', 'type': 'float64'},
+        {'key': 'hardware', 'label': 'Hardware', 'type': 'object'},
+        {'key': 'quantization', 'label': 'Quantization', 'type': 'object'},
+        {'key': 'param_size', 'label': 'Param Size', 'type': 'object'},
+        {'key': 'files_size', 'label': 'Files Size', 'type': 'object'},
+        {'key': 'context_length', 'label': 'Context Length', 'type': 'object'},
+        {'key': 'total', 'label': 'Total', 'type': 'float64'},
+        {'key': 'factual', 'label': 'Factual', 'type': 'float64'},
+        {'key': 'contradictions', 'label': 'Contradictions', 'type': 'float64'},
+        {'key': 'neutral', 'label': 'Neutral', 'type': 'float64'},
+        {'key': 'confidence', 'label': 'Confidence', 'type': 'float64'},
+        {'key': 'is_hallucinated', 'label': 'Is Hallucinated', 'type': 'float64'},
+        {'key': 'hallucination_severity', 'label': 'Hallucination Severity', 'type': 'float64'},
+        {'key': 'faithfulness_score', 'label': 'Faithfulness Score', 'type': 'float64'},
+        {'key': 'bleu_1', 'label': 'Bleu 1', 'type': 'float64'},
+        {'key': 'bleu_2', 'label': 'Bleu 2', 'type': 'float64'},
+        {'key': 'bleu_3', 'label': 'Bleu 3', 'type': 'float64'},
+        {'key': 'bleu_4', 'label': 'Bleu 4', 'type': 'float64'},
+        {'key': 'bleu_avg', 'label': 'Bleu Avg', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method0', 'label': 'Bleu Smoothing Method0', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method1', 'label': 'Bleu Smoothing Method1', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method2', 'label': 'Bleu Smoothing Method2', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method3', 'label': 'Bleu Smoothing Method3', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method4', 'label': 'Bleu Smoothing Method4', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method5', 'label': 'Bleu Smoothing Method5', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method6', 'label': 'Bleu Smoothing Method6', 'type': 'float64'},
+        {'key': 'bleu_smoothing_method7', 'label': 'Bleu Smoothing Method7', 'type': 'float64'},
+        {'key': 'timestamp', 'label': 'Timestamp', 'type': 'object'}
+    ]
+
     def __init__(
         self,
         host: str = '127.0.0.1',
@@ -80,6 +152,8 @@ class OllamaModelTester:
         """
         result = ec.run_command(command=f'ollama pull {model_name}', check=True, timeout=self.cmd_timeout)
         if (result.returncode == 0):
+            if (model_name not in self.models):
+                self.models.append(model_name)
             print(f'"{model_name}" model is pulled successfully!')
         else:
             print(f'"{model_name}" model pull threw an error')
@@ -98,6 +172,8 @@ class OllamaModelTester:
         for model_name in models:
             result = ec.run_command(f'ollama pull {model_name}', check=True, timeout=self.cmd_timeout)
             if (result.returncode == 0):
+                if (model_name not in self.models):
+                    self.models.append(model_name)
                 print(f'"{model_name}" model is pulled successfully!')
             else:
                 print(f'"{model_name}" model pull threw an error')
@@ -327,6 +403,8 @@ class OllamaModelTester:
                     df = self.pd.DataFrame(self.get_data(table_name))
                     if ('timestamp' not in df.columns):
                         df['timestamp'] = datetime.now()
+                    if (not self.credentials):
+                        self.__credentials_load()
                     self.pandas_gbq.to_gbq(
                         df,
                         f'{project_id}.{dataset_id}.{table_name}',
@@ -366,6 +444,8 @@ class OllamaModelTester:
                       FROM `{project_id}.{dataset_id}.{table_name}`
                      LIMIT {limits}
                     """
+                    if (not self.credentials):
+                        self.__credentials_load()
                     df = self.pandas_gbq.read_gbq(
                         query,
                         project_id = project_id,
@@ -447,6 +527,9 @@ class OllamaModelTester:
                 try:
                     var_project_id = metric['project_id']
                     query = metric['sql']
+
+                    if (not self.credentials):
+                        self.__credentials_load()
                     var_df = self.pandas_gbq.read_gbq(
                         query,
                         project_id = var_project_id,
@@ -480,6 +563,51 @@ class OllamaModelTester:
         )
         return fig
 
+    def extract_columns(self) -> List[Dict[str, str]]:
+        """
+        Meeting 7
+        Public method: Extract a dictionary with all columns (name, title and type).
+
+        Returns:
+            List[Dict[str, str]]
+        """
+        all_columns = {}
+        for model_name in ['model_results', 'validation_results']:
+            model_data = self.get_data(model_name)
+            if (len(model_data) > 0):
+                model_data_df = self.pd.DataFrame(model_data)
+                var_model_columns = {col: {
+                    'key': col,
+                    'label': f'{col}'.replace('_', ' ').title(),
+                    'type': str(model_data_df[col].dtype)
+                } for col in model_data_df.columns}.values()
+                var_model_columns = list(var_model_columns)
+            else:
+                var_model_columns = self.OM_MODEL_COLUMNS if model_name == 'model_results' else self.OM_VALIDATION_COLUMNS 
+            all_columns[model_name] = var_model_columns
+
+        return all_columns
+
+    def __credentials_load(self) -> None:
+        """
+        Meeting 7
+        Private method: Load credentials dynamic 
+        """
+        folder_path = 'credentials'
+        if (os.path.exists(folder_path)):
+            files = os.listdir(folder_path)
+            json_files = [f for f in files if f.endswith('.json')]
+            if (len(json_files) > 0):
+                self.key_path = f'{folder_path}/{json_files[0]}'
+        try:
+            if (self.key_path):
+                self.credentials = self.service_account.Credentials.from_service_account_file(
+                    self.key_path,
+                    scopes = ['https://www.googleapis.com/auth/cloud-platform']
+                )
+        except Exception as e:
+            print(f'Credentials to Google Oauth2 are not set: {str(e)}')
+
     def __initialization(self) -> None:
         os.environ['OLLAMA_HOST'] = f'{self.host}:{self.port}'
 
@@ -494,19 +622,7 @@ class OllamaModelTester:
             model='cross-encoder/nli-deberta-v3-base',
             device=0
         )
-
-        folder_path = 'credentials'
-        if (os.path.exists(folder_path)):
-            files = os.listdir(folder_path)
-            json_files = [f for f in files if f.endswith('.json')]
-            self.key_path = f'{folder_path}/{json_files[0]}'
-        try:
-            self.credentials = self.service_account.Credentials.from_service_account_file(
-                self.key_path,
-                scopes = ['https://www.googleapis.com/auth/cloud-platform']
-            )
-        except Exception as e:
-            print(f'Credentials to Google Oauth2 are not set: {str(e)}')
+        self.__credentials_load()
         print('Class OllamaModelTester is initialized')
 
     def __start_server(self) -> 'OllamaModelTester':
@@ -746,6 +862,10 @@ class OllamaModelTester:
         self.plt = importlib.import_module('matplotlib.pyplot')
         self.numpy = self.imported_modules['numpy']
         self.np = self.numpy
+
+        # Disable visualization
+        if (not self.show_figure):
+            self.matplotlib.use('Agg')
     
     def __enter__(self) -> 'OllamaModelTester':
         self.__package_installation()

@@ -1,7 +1,7 @@
 import os
 import OllamaModelTester as omt
 
-i_models = ['tinyllama']
+i_models = ['tinyllama', 'smollm2:135m', 'gemma2:2b', 'llama3.2:1b']
 i_prompt_text = """Summarize this text
 
 Intel Corp. raised $20 billion in an upsized share sale, a third more than it was targeting when it announced the deal Monday morning.
