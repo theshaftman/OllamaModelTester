@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "OllamaModelTester"
-version = "0.0.4"
+version = "0.0.5"
 authors = [
     { name="Mariyan Vasilev Apostolov", email="mariyan.apostolov89@gmail.com" }
 ]
