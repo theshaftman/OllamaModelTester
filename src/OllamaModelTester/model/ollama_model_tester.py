@@ -10,6 +10,7 @@ from .model_visualizer import ModelVisualizer
 from OllamaModelTester.services.import_module import ImportModule as im
 from OllamaModelTester.services.package_install import PackageInstall as packi
 from OllamaModelTester.services.execute_cmd import ExecuteCommand as ec
+from OllamaModelTester.services.hardware_gpu import HardwareGPU as hgpu
 
 
 class OllamaModelTester:
@@ -789,8 +790,8 @@ class OllamaModelTester:
             'context_length': 'unknown'
         }
         try:
-            if (self.torch.cuda.is_available()):
-                gpu_name = self.torch.cuda.get_device_name(0)
+            gpu_name = hgpu.get_gpu_names()
+            if (gpu_name):
                 info['hardware'] = f'GPU: {gpu_name}'
             else:
                 cpu_count = multiprocessing.cpu_count()

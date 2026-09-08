@@ -175,8 +175,12 @@ class ModelVisualizer:
             save_dir = os.path.dirname(os.path.join(os_path, savefig_path))
             if save_dir:
                 os.makedirs(save_dir, exist_ok=True)
+
+            savefigure_path = os.path.join(save_dir, os.path.basename(savefig_path))
+            if os.path.isfile(savefigure_path):
+                os.remove(savefigure_path)
             var_dpi = options.get('dpi', 300)
-            plt.savefig(os.path.join(save_dir, os.path.basename(savefig_path)), dpi=var_dpi, bbox_inches='tight')
+            plt.savefig(savefigure_path, dpi=var_dpi, bbox_inches='tight')
 
         if (show_figure):
             plt.show()

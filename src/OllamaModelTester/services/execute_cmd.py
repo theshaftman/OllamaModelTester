@@ -21,7 +21,7 @@ class ExecuteCommand():
                 timeout=timeout
             )
             print(f'Command succeded: {command}')
-            if (var_subprocess.stdout):
+            if (var_subprocess.stdout and check):
                 print(f'Output: {var_subprocess.stdout}')
         except Exception as e:
             print(f'Exception thrown: {str(e)}')
