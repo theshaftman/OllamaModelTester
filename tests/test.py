@@ -18,34 +18,20 @@ i_metrics = [{
 }, {
     'data': 'validation_results',
     'columns': ['overall_f1_score']
-}, {
-    'data': 'sql',
-    'columns': ['faithfulness_score'],
-    'project_id': 'llm-practical-experiment',
-    'dataset_id': 'llm_model_evaluation',
-    'sql': """
-WITH models AS (
-SELECT mr.model AS `model`
-    , mr.faithfulness_score AS `faithfulness_score`
-FROM `llm-practical-experiment.llm_model_evaluation.model_results` AS mr
-LIMIT 1000
-),
-validations AS (
-SELECT 'human' AS `model`
-    , vr.faithfulness_score AS `faithfulness_score`
-FROM `llm-practical-experiment.llm_model_evaluation.validation_results` AS vr
-LIMIT 1000
-)
-SELECT m.`model`
-    , m.`faithfulness_score`
-FROM models AS m
-UNION ALL
-SELECT v.`model`
-    , v.`faithfulness_score`
-FROM validations AS v
-    """
 }]
 i_colors = ['red', 'green', 'blue', 'purple', 'yellow', 'white']
+i_baseline_fingerprint = {
+    'response': {
+        'min_length': 1,
+        'max_length': 5000,
+        'done': True,
+        'finish_reason': 'stop',
+    },
+    "performance": {
+        'max_eval_duration': 30_000_000_000,
+        'max_prompt_eval_duration': 10_000_000_000,
+    }
+}
 
 with omt.OllamaModelTester(
     host='127.0.0.1',
@@ -58,7 +44,7 @@ with omt.OllamaModelTester(
     cmd_timeout = 120,
     os_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ) as om_tester:
-    om_tester.import_results_from_csv()
+    # om_tester.import_results_from_csv()
     """
     Create a IAM service account, export the Key as JSON, upload it in folder "credentials" and
     create a Google BigQuery Dataset to use the import export module of Google BigQuery.
@@ -73,7 +59,13 @@ with omt.OllamaModelTester(
     # om_tester.print_results(var_validate_elevator)
 
     om_tester.pull_models()
-    om_tester.compare_models(prompt_text=i_prompt_text)
+    om_tester.compare_models(
+        prompt_text=i_prompt_text,
+        baseline_fingerprint=i_baseline_fingerprint,
+        **{
+            'temperature': 0.9
+        }
+    )
     # om_tester.print_results()
 
     om_tester.visualize_results(plot_type='bar', metrics=i_metrics, colors=i_colors, savefig_path=f'charts/bar_chart.png', max_cols_per_row=2)

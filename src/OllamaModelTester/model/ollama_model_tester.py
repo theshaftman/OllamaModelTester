@@ -10,7 +10,9 @@ from .model_visualizer import ModelVisualizer
 from OllamaModelTester.services.import_module import ImportModule as im
 from OllamaModelTester.services.package_install import PackageInstall as packi
 from OllamaModelTester.services.execute_cmd import ExecuteCommand as ec
-from OllamaModelTester.services.hardware_gpu import HardwareGPU as hgpu
+from OllamaModelTester.services.extract_hardware_info import ExtractHardwareInfo
+from OllamaModelTester.services.generate_response import GenerateResponse
+from OllamaModelTester.services.diagnosis import Diagnosis
 
 
 class OllamaModelTester:
@@ -22,6 +24,24 @@ class OllamaModelTester:
     OM_MODEL_COLUMNS = [
         {'key': 'model', 'label': 'Model', 'type': 'object'},
         {'key': 'response', 'label': 'Response', 'type': 'object'},
+        {'key': 'os', 'label': 'Os', 'type': 'object'},
+        {'key': 'os_release', 'label': 'Os Release', 'type': 'object'},
+        {'key': 'os_version', 'label': 'Os Version', 'type': 'object'},
+        {'key': 'machine', 'label': 'Machine', 'type': 'object'},
+        {'key': 'processor', 'label': 'Processor', 'type': 'object'},
+        {'key': 'python', 'label': 'Python', 'type': 'object'},
+        {'key': 'cpu_model', 'label': 'CPU Model', 'type': 'object'},
+        {'key': 'cpu_cores', 'label': 'CPU Cores', 'type': 'object'},
+        {'key': 'ram_gb', 'label': 'Ram Gb', 'type': 'float64'},
+        {'key': 'version', 'label': 'Version', 'type': 'object'},
+        {'key': 'family', 'label': 'Family', 'type': 'object'},
+        {'key': 'quantization_level', 'label': 'Quantization Level', 'type': 'object'},
+        {'key': 'seed', 'label': 'Seed', 'type': 'int64'},
+        {'key': 'temperature', 'label': 'Temperature', 'type': 'float64'},
+        {'key': 'top_k', 'label': 'Top K', 'type': 'int64'},
+        {'key': 'top_p', 'label': 'Top P', 'type': 'float64'},
+        {'key': 'num_ctx', 'label': 'Num Ctx', 'type': 'int64'},
+        {'key': 'num_predict', 'label': 'Num Predict', 'type': 'int64'},
         {'key': 'tokens', 'label': 'Tokens', 'type': 'int64'},
         {'key': 'elapsed_time', 'label': 'Elapsed Time', 'type': 'float64'},
         {'key': 'ttft', 'label': 'Ttft', 'type': 'float64'},
@@ -54,10 +74,24 @@ class OllamaModelTester:
         {'key': 'bleu_smoothing_method5', 'label': 'Bleu Smoothing Method5', 'type': 'float64'},
         {'key': 'bleu_smoothing_method6', 'label': 'Bleu Smoothing Method6', 'type': 'float64'},
         {'key': 'bleu_smoothing_method7', 'label': 'Bleu Smoothing Method7', 'type': 'float64'},
+        {'key': 'diagnosis_status', 'label': 'Diagnosis Status', 'type': 'object'},
+        {'key': 'diagnosis_reasons', 'label': 'Diagnosis Reasons', 'type': 'object'},
         {'key': 'timestamp', 'label': 'Timestamp', 'type': 'object'}
     ]
 
     OM_VALIDATION_COLUMNS = [
+        {'key': 'os', 'label': 'Os', 'type': 'object'},
+        {'key': 'os_release', 'label': 'Os Release', 'type': 'object'},
+        {'key': 'os_version', 'label': 'Os Version', 'type': 'object'},
+        {'key': 'machine', 'label': 'Machine', 'type': 'object'},
+        {'key': 'processor', 'label': 'Processor', 'type': 'object'},
+        {'key': 'python', 'label': 'Python', 'type': 'object'},
+        {'key': 'cpu_model', 'label': 'CPU Model', 'type': 'object'},
+        {'key': 'cpu_cores', 'label': 'CPU Cores', 'type': 'object'},
+        {'key': 'ram_gb', 'label': 'Ram Gb', 'type': 'float64'},
+        {'key': 'version', 'label': 'Version', 'type': 'object'},
+        {'key': 'family', 'label': 'Family', 'type': 'object'},
+        {'key': 'quantization_level', 'label': 'Quantization Level', 'type': 'object'},
         {'key': 'human_label', 'label': 'Human Label', 'type': 'object'},
         {'key': 'predicted', 'label': 'Predicted', 'type': 'object'},
         {'key': 'overall_accuracy', 'label': 'Overall Accuracy', 'type': 'float64'},
@@ -183,6 +217,7 @@ class OllamaModelTester:
         self,
         prompt_text: str = None,
         models: List[str] = None,
+        baseline_fingerprint: Dict[str, Any] = None,
         **options
     ) -> List[Dict[str, Any]]:
         """
@@ -197,10 +232,6 @@ class OllamaModelTester:
             List[Dict[str, Any]]: Compared models with scores
         """
         var_models = models if models else self.models
-        var_options = {
-            'temperature': options.get('temperature', 0.1),
-            'num_ctx': options.get('num_ctx', 512)
-        }
         for model_name in var_models:
             try:
                 print(f'Testing model "{model_name}"')
@@ -209,16 +240,16 @@ class OllamaModelTester:
                 tokens_received = 0
                 token_times = []
                 response_text = ''
+                last_chunk = {}
 
                 ttft_start = time.time()
                 start=time.time()
 
-                response_generator = self.ollama.generate(
-                    model=model_name,
-                    prompt=prompt_text,
-                    options=var_options,
-
-                    stream=True
+                response_generator, r_options, fingerprint = GenerateResponse.generate(
+                    model_name=model_name,
+                    prompt_text=prompt_text,
+                    imported_modules=self.imported_modules,
+                    **options
                 )
 
                 for chunk in response_generator:
@@ -233,6 +264,32 @@ class OllamaModelTester:
                         token_times.append(current_time - start)
 
                     response_text += chunk['response']
+
+                    # Keep the latest Ollama metadata
+                    fingerprint['response']['done'] = chunk.get('done', False)
+                    fingerprint['response']['finish_reason'] = chunk.get('done_reason')
+
+                    fingerprint['performance']['eval_count'] = chunk.get('eval_count')
+                    fingerprint['performance']['prompt_eval_count'] = chunk.get(
+                        'prompt_eval_count'
+                    )
+                    fingerprint['performance']['eval_duration'] = chunk.get(
+                        'eval_duration'
+                    )
+                    fingerprint['performance']['prompt_eval_duration'] = chunk.get(
+                        'prompt_eval_duration'
+                    )
+                    last_chunk = chunk
+
+                result = {
+                    'task_success': bool(response_text),
+                    'response': response_text,
+                    'done': last_chunk.get('done', False),
+                    'finish_reason': last_chunk.get('done_reason'),
+                }
+                
+                fingerprint['response']['text'] = response_text
+                fingerprint['response']['length'] = len(response_text)
 
                 elapsed=time.time() - start
 
@@ -253,20 +310,24 @@ class OllamaModelTester:
                 }
 
                 # Extract hardware and model information
-                try:
-                    model_info = self.__get_model_info(model_name)
-                except:
-                    model_info = {
-                        'hardware': 'unknown',
-                        'quantization': 'unknown',
-                        'param_size': 'unknown',
-                        'files_size': 'unknown',
-                        'context_length': 'unknown'
-                    }
+                model_info = ExtractHardwareInfo.get_hardware_info(
+                    host=self.host,
+                    port=self.port,
+                    model_name=model_name,
+                    imported_modules = self.imported_modules,
+                )
                 model_comparison.update(model_info)
+                model_comparison.update(r_options)
 
                 calculate_scores = self.__calculate_scores(prompt_text, response_text)
                 model_comparison.update(calculate_scores)
+                
+                diagnosis = Diagnosis.classify_failure(
+                    result=result,
+                    fingerprint=fingerprint,
+                    baseline_fingerprint=baseline_fingerprint,
+                )
+                model_comparison.update(diagnosis)
 
                 self.model_results.append(model_comparison)
                 print(f'Successfully completed testing model "{model_name}"')
@@ -326,16 +387,11 @@ class OllamaModelTester:
             })
 
             # Extract hardware and model information
-            try:
-                model_info = self.__get_model_info()
-            except:
-                model_info = {
-                    'hardware': 'unknown',
-                    'quantization': 'unknown',
-                    'param_size': 'unknown',
-                    'files_size': 'unknown',
-                    'context_length': 'unknown'
-                }
+            model_info = ExtractHardwareInfo.get_hardware_info(
+                host=self.host,
+                port=self.port,
+                imported_modules = self.imported_modules
+            )
             result.update(model_info)
             result.update(calculate_scores)
             self.validation_results.append(result)
@@ -771,50 +827,6 @@ class OllamaModelTester:
         finally:
             return dict_scores
 
-    def __get_model_info(self, model_name: str = None) -> Dict[str, Any]:
-        """
-        Meeting 2 (Extended)
-        Private method to extract hardware and model information
-
-        Args:
-            model_name (str): Model name
-
-        Returns:
-            Dict[str, Any]
-        """
-        info = {
-            'hardware': 'unknown',
-            'quantization': 'unknown',
-            'param_size': 'unknown',
-            'files_size': 'unknown',
-            'context_length': 'unknown'
-        }
-        try:
-            gpu_name = hgpu.get_gpu_names()
-            if (gpu_name):
-                info['hardware'] = f'GPU: {gpu_name}'
-            else:
-                cpu_count = multiprocessing.cpu_count()
-                info['hardware'] = f'CPU: {cpu_count} cores'
-
-            if (model_name):
-                response = self.requests.get(f'http://{self.host}:{self.port}/api/tags')
-                if (response.status_code == 200):
-                    data = response.json()
-                    models = data.get('models', [])
-                    model = [model for model in models if model_name in model['name']]
-                    if model:
-                        model = model[0]
-
-                        info['quantization'] = model['details']['quantization_level']
-                        info['param_size'] = model['details']['parameter_size']
-                        info['files_size'] = f'{round(model['size'] / (1024 ** 3), 3)} GB'
-                        info['context_length'] = model['details']['context_length']
-        except Exception as e:
-            print(f'Exception thrown: {str(e)}')
-        finally:
-            return info
-
     def __package_installation(self) -> bool:
         """
         Private method: Installation of packages
@@ -837,6 +849,8 @@ class OllamaModelTester:
         self.imported_modules = imported_modules
 
         self.ollama = imported_modules['ollama']
+        self.chat = getattr(self.ollama, 'chat')
+        self.ChatResponse = getattr(self.ollama, 'ChatResponse')
         self.nest_asyncio = imported_modules['nest_asyncio']
         self.requests = imported_modules['requests']
         self.transformers = imported_modules['transformers']
