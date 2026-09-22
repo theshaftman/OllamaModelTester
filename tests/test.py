@@ -18,6 +18,32 @@ i_metrics = [{
 }, {
     'data': 'validation_results',
     'columns': ['overall_f1_score']
+# }, {
+#     'data': 'sql',
+#     'columns': ['faithfulness_score'],
+#     'project_id': 'llm-practical-experiment',
+#     'dataset_id': 'llm_model_evaluation',
+#     'sql': """
+# WITH models AS (
+# SELECT mr.model AS `model`
+#     , mr.faithfulness_score AS `faithfulness_score`
+# FROM `llm-practical-experiment.llm_model_evaluation.model_results` AS mr
+# LIMIT 1000
+# ),
+# validations AS (
+# SELECT 'human' AS `model`
+#     , vr.faithfulness_score AS `faithfulness_score`
+# FROM `llm-practical-experiment.llm_model_evaluation.validation_results` AS vr
+# LIMIT 1000
+# )
+# SELECT m.`model`
+#     , m.`faithfulness_score`
+# FROM models AS m
+# UNION ALL
+# SELECT v.`model`
+#     , v.`faithfulness_score`
+# FROM validations AS v
+#     """
 }]
 i_colors = ['red', 'green', 'blue', 'purple', 'yellow', 'white']
 i_baseline_fingerprint = {
