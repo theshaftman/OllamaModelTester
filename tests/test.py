@@ -44,7 +44,7 @@ with omt.OllamaModelTester(
     cmd_timeout = 120,
     os_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 ) as om_tester:
-    # om_tester.import_results_from_csv()
+    om_tester.import_results_from_csv()
     """
     Create a IAM service account, export the Key as JSON, upload it in folder "credentials" and
     create a Google BigQuery Dataset to use the import export module of Google BigQuery.
