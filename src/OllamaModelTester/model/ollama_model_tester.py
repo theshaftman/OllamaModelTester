@@ -2,7 +2,7 @@ import importlib
 import time
 import os
 import re
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 import multiprocessing
 from datetime import datetime
 
@@ -168,6 +168,7 @@ class OllamaModelTester:
         self.cmd_timeout = cmd_timeout
         self.os_path = os_path
         self.imported_modules = None
+        self.sentence_scores = []
 
     def get_data(self, key) -> Any:
         return getattr(self, key)
@@ -218,8 +219,9 @@ class OllamaModelTester:
         prompt_text: str = None,
         models: List[str] = None,
         baseline_fingerprint: Dict[str, Any] = None,
+        nli_model_name: str = 'cross-encoder/nli-deberta-v3-base',
         **options
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Public method: Compare selected or internal added models
 
@@ -232,6 +234,7 @@ class OllamaModelTester:
             List[Dict[str, Any]]: Compared models with scores
         """
         var_models = models if models else self.models
+        sentence_scores: List[Dict[str, Any]] = []
         for model_name in var_models:
             try:
                 print(f'Testing model "{model_name}"')
@@ -319,9 +322,26 @@ class OllamaModelTester:
                 model_comparison.update(model_info)
                 model_comparison.update(r_options)
 
-                calculate_scores = self.__calculate_scores(prompt_text, response_text)
+                calculate_scores, sentence_scores = self.__calculate_scores(
+                    reference_text=prompt_text,
+                    generated_text=response_text,
+                    model_name=model_name,
+                    nli_model_name=nli_model_name
+                )
                 model_comparison.update(calculate_scores)
-                
+
+                baseline_fingerprint = baseline_fingerprint if baseline_fingerprint else {
+                    'response': {
+                        'min_length': 1,
+                        'max_length': 5000,
+                        'done': True,
+                        'finish_reason': 'stop',
+                    },
+                    "performance": {
+                        'max_eval_duration': 30_000_000_000,
+                        'max_prompt_eval_duration': 10_000_000_000,
+                    }
+                }
                 diagnosis = Diagnosis.classify_failure(
                     result=result,
                     fingerprint=fingerprint,
@@ -349,14 +369,16 @@ class OllamaModelTester:
                 })
                 print(f'Testing model "{model_name}" threw an error')
 
-        return self.model_results
+        return self.model_results, sentence_scores
 
     def validate_evaluator(
         self,
         prompt_text: str = None,
         generated_text: str = None,
-        human_label: str = None
-    ) -> List[Dict[str, Any]]:
+        human_label: str = None,
+        model_name: str = 'human',
+        nli_model_name: str = 'cross-encoder/nli-deberta-v3-base'
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
         """
         Meeting 2 (Extended)
         Public method: Validate human generated text and label
@@ -365,12 +387,21 @@ class OllamaModelTester:
             prompt_text (str): Original text
             generated_text (str): Human generated text
             human_label (str): Text defining that generated_text is faithful or hallucinated
+            model_name (str): Select the model that generates the text
+            nli_model_name (str): Select a NLI Model to compare the generated text. Default value is 'cross-encoder/nli-deberta-v3-base'
+            
         Returns:
-            Dict[str, Any]
+            Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]
         """
         result: Dict[str, Any] = {}
+        sentence_scores: List[Dict[str, Any]] = []
         try:
-            calculate_scores = self.__calculate_scores(prompt_text, generated_text)
+            calculate_scores, sentence_scores = self.__calculate_scores(
+                reference_text=prompt_text,
+                generated_text=generated_text,
+                model_name=model_name,
+                nli_model_name=nli_model_name
+            )
             predicted = 'hallucinated' if (calculate_scores['is_hallucinated'] == 1.0) else 'faithful'
 
             human_labels = [human_label]
@@ -398,7 +429,7 @@ class OllamaModelTester:
         except Exception as e:
             print(f'Exception thrown: {str(e)}')
         finally:
-            return self.validation_results
+            return self.validation_results, sentence_scores
 
     def export_results_to_csv(self) -> None:
         """
@@ -675,10 +706,6 @@ class OllamaModelTester:
             self.nltk.download('punkt')
             self.nltk.download('averaged_perceptron_tagger_eng')
 
-        self.nli_model = self.pipeline('text-classification',
-            model='cross-encoder/nli-deberta-v3-base',
-            device=0
-        )
         self.__credentials_load()
         print('Class OllamaModelTester is initialized')
 
@@ -723,7 +750,13 @@ class OllamaModelTester:
         text = ' '.join(text.split())
         return text
 
-    def __calculate_scores(self, reference_text: str = None, generated_text: str = None) -> Dict[str, Any]:
+    def __calculate_scores(
+        self,
+        reference_text: str = None,
+        generated_text: str = None,
+        model_name: str = None,
+        nli_model_name: str = 'cross-encoder/nli-deberta-v3-base'
+    ) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
         """
         Meeting 2
         Private method: Calculate multiple BLUE score variants
@@ -731,9 +764,11 @@ class OllamaModelTester:
         Args:
             reference_text (str): Text passed from main
             generated_text (str): Text generated from AI agent
+            model_name (str): Select the model that generates the text
+            nli_model_name (str): Select a NLI Model to compare the generated text. Default value is 'cross-encoder/nli-deberta-v3-base'
 
         Returns:
-            Dict[str, float]
+            Tuple[Dict[str, Any], List[Dict[str, Any]]]
         """
         dict_scores = {
             'total': 0.0,
@@ -775,17 +810,24 @@ class OllamaModelTester:
             if not sentences:
                 return dict_scores
 
-            result_scores = []
+            self.nli_model = self.pipeline('text-classification',
+                model=nli_model_name,
+                device=0
+            )
+            result_scores: List[Dict[str, Any]] = []
             for sentence in sentences:
                 pred = self.nli_model(f'{reference_text} </s> {sentence}')
                 label = (pred[0]['label']).upper()
                 score = pred[0]['score']
 
                 result_scores.append({
+                    'model_name': model_name,
+                    'nli_model': nli_model_name,
                     'sentence': sentence,
                     'label': label,
                     'confidence': score
                 })
+            self.sentence_scores.extend(result_scores)
 
             dict_scores['total'] = len(result_scores)
             dict_scores['factual'] = sum(1 for r in result_scores if r['label'] == 'ENTAILMENT') / len(result_scores)
@@ -825,7 +867,7 @@ class OllamaModelTester:
         except Exception as e:
             print(f'Error appeared: {str(e)}')
         finally:
-            return dict_scores
+            return dict_scores, result_scores
 
     def __package_installation(self) -> bool:
         """
