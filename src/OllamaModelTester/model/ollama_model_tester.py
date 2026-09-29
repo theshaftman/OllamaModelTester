@@ -439,7 +439,7 @@ class OllamaModelTester:
         folder_path = os.path.join(self.os_path, 'documents')
         if (not os.path.exists(folder_path)):
             os.makedirs(folder_path)
-        files_to_export = ['model_results', 'validation_results']
+        files_to_export = ['model_results', 'validation_results', 'sentence_scores']
         for file_name in files_to_export:
             filepath = os.path.join(folder_path, f'{file_name}.csv')
             df = self.pd.DataFrame(self.get_data(file_name))
@@ -454,7 +454,7 @@ class OllamaModelTester:
         Public method to import "model_results" and "validation_results" from CSV in a folder "documents"
         """
         folder_path = os.path.join(self.os_path, 'documents')
-        files_to_import = ['model_results', 'validation_results']
+        files_to_import = ['model_results', 'validation_results', 'sentence_scores']
         for file_name in files_to_import:
             filepath = os.path.join(folder_path, f'{file_name}.csv')
             if (os.path.exists(filepath)):
@@ -485,7 +485,7 @@ class OllamaModelTester:
         """
         is_exported = False
         if (project_id and dataset_id):
-            tables_to_export = ['model_results', 'validation_results']
+            tables_to_export = ['model_results', 'validation_results', 'sentence_scores']
             try:
                 for table_name in tables_to_export:
                     df = self.pd.DataFrame(self.get_data(table_name))
@@ -524,7 +524,7 @@ class OllamaModelTester:
         """
         is_imported = False
         if (project_id and dataset_id):
-            tables_to_export = ['model_results', 'validation_results']
+            tables_to_export = ['model_results', 'validation_results', 'sentence_scores']
             try:
                 for table_name in tables_to_export:
                     query = f"""
