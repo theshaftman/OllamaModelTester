@@ -77,15 +77,16 @@ with omt.OllamaModelTester(
     """
     # om_tester.import_results_from_gbq('llm-practical-experiment', 'llm_model_evaluation')
 
-    var_validate_elevator = om_tester.validate_evaluator(
+    var_validate_elevator, sentence_scores = om_tester.validate_evaluator(
         prompt_text=i_prompt_text,
         generated_text=i_generated_text,
         human_label=i_human_label
     )
     # om_tester.print_results(var_validate_elevator)
+    print(sentence_scores)
 
     om_tester.pull_models()
-    om_tester.compare_models(
+    compare_models, sentence_scores = om_tester.compare_models(
         prompt_text=i_prompt_text,
         baseline_fingerprint=i_baseline_fingerprint,
         **{
@@ -93,6 +94,7 @@ with omt.OllamaModelTester(
         }
     )
     # om_tester.print_results()
+    print(sentence_scores)
 
     om_tester.visualize_results(plot_type='bar', metrics=i_metrics, colors=i_colors, savefig_path=f'charts/bar_chart.png', max_cols_per_row=2)
     om_tester.visualize_results(plot_type='plot', metrics=i_metrics, colors=i_colors, savefig_path=f'charts/plot_chart.png', max_cols_per_row=2)
