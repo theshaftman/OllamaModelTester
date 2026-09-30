@@ -322,12 +322,13 @@ class OllamaModelTester:
                 model_comparison.update(model_info)
                 model_comparison.update(r_options)
 
-                calculate_scores, sentence_scores = self.__calculate_scores(
+                calculate_scores, c_sentence_scores = self.__calculate_scores(
                     reference_text=prompt_text,
                     generated_text=response_text,
                     model_name=model_name,
                     nli_model_name=nli_model_name
                 )
+                sentence_scores.extend(c_sentence_scores)
                 model_comparison.update(calculate_scores)
 
                 baseline_fingerprint = baseline_fingerprint if baseline_fingerprint else {
@@ -396,12 +397,13 @@ class OllamaModelTester:
         result: Dict[str, Any] = {}
         sentence_scores: List[Dict[str, Any]] = []
         try:
-            calculate_scores, sentence_scores = self.__calculate_scores(
+            calculate_scores, c_sentence_scores = self.__calculate_scores(
                 reference_text=prompt_text,
                 generated_text=generated_text,
                 model_name=model_name,
                 nli_model_name=nli_model_name
             )
+            sentence_scores.extend(c_sentence_scores)
             predicted = 'hallucinated' if (calculate_scores['is_hallucinated'] == 1.0) else 'faithful'
 
             human_labels = [human_label]
