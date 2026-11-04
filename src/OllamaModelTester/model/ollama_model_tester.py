@@ -410,7 +410,7 @@ class OllamaModelTester:
             predictions = [predicted]
 
             overall_accuracy = self.accuracy_score(human_labels, predictions)
-            overall_f1_score = self.f1_score(human_labels, predictions, pos_label='hallucinated', average='binary')
+            overall_f1_score = self.f1_score(human_labels, predictions, average='weighted', zero_division=0)
 
             result.update({
                 'human_label': human_label,
@@ -444,9 +444,17 @@ class OllamaModelTester:
         files_to_export = ['model_results', 'validation_results', 'sentence_scores']
         for file_name in files_to_export:
             filepath = os.path.join(folder_path, f'{file_name}.csv')
-            df = self.pd.DataFrame(self.get_data(file_name))
-            if 'timestamp' not in df.columns:
-                df['timestamp'] = datetime.now()
+            rows = self.get_data(file_name) or []
+            now = datetime.now()
+            for r in rows:
+                if not r.get('timestamp'):
+                    r['timestamp'] = now
+
+            df = self.pd.DataFrame(rows)
+            if 'timestamp' in df.columns:
+                cols = [c for c in df.columns if c != 'timestamp'] + ['timestamp']
+                df = df[cols]
+
             df.to_csv(filepath, index=False)
             print(f'Exported file to "{filepath}"')
 
@@ -795,9 +803,10 @@ class OllamaModelTester:
             'bleu_smoothing_method6': 0.0,
             'bleu_smoothing_method7': 0.0
         }
+        result_scores: List[Dict[str, Any]] = []
         try:
             if (not generated_text or len(generated_text.strip()) == 0):
-                return dict_scores
+                return dict_scores, result_scores
 
             cleaned_ref = self.__clean_text(reference_text)
             cleaned_gen = self.__clean_text(generated_text)
@@ -806,17 +815,16 @@ class OllamaModelTester:
             generated_tokens = self.word_tokenize(cleaned_gen)
 
             if (not reference_tokens or not generated_tokens):
-                return dict_scores
+                return dict_scores, result_scores
 
-            sentences = self.nltk.sent_tokenize(generated_text)
+            sentences = self.nltk.sent_tokenize(generated_text) or [generated_text]
             if not sentences:
-                return dict_scores
+                return dict_scores, result_scores
 
             self.nli_model = self.pipeline('text-classification',
                 model=nli_model_name,
                 device=0
             )
-            result_scores: List[Dict[str, Any]] = []
             for sentence in sentences:
                 pred = self.nli_model(f'{reference_text} </s> {sentence}')
                 label = (pred[0]['label']).upper()
@@ -831,40 +839,57 @@ class OllamaModelTester:
                 })
             self.sentence_scores.extend(result_scores)
 
-            dict_scores['total'] = len(result_scores)
-            dict_scores['factual'] = sum(1 for r in result_scores if r['label'] == 'ENTAILMENT') / len(result_scores)
-            dict_scores['contradictions'] = sum(1 for r in result_scores if r['label'] == 'CONTRADICTION') / len(result_scores)
-            dict_scores['neutral'] = sum(1 for r in result_scores if r['label'] == 'NEUTRAL') / len(result_scores)
-            dict_scores['confidence'] = sum(r['confidence'] for r in result_scores) / len(result_scores)
+            n = len(result_scores)
+            dict_scores['total'] = n
+            dict_scores['factual'] = sum(1 for r in result_scores if r['label'] == 'ENTAILMENT') / n
+            dict_scores['contradictions'] = sum(1 for r in result_scores if r['label'] == 'CONTRADICTION') / n
+            dict_scores['neutral'] = sum(1 for r in result_scores if r['label'] == 'NEUTRAL') / n
+            dict_scores['confidence'] = sum(r['confidence'] for r in result_scores) / n
 
             dict_scores['is_hallucinated'] = 1.0 if (dict_scores['contradictions'] > 0 or dict_scores['neutral'] > 0.3) else 0
             dict_scores['hallucination_severity'] = (dict_scores['contradictions'] * 1.0) + (dict_scores['neutral'] * 0.5)
             dict_scores['faithfulness_score'] = dict_scores['factual'] - (dict_scores['contradictions'] * 0.5)
 
             # Calculating BLEU scores
-            smoothing = self.SmoothingFunction()
+            refs = [reference_tokens]
             var_weights = (0.25, 0.25, 0.25, 0.25)
+            third = (1.0 / 3.0, 1.0 / 3.0, 1.0 / 3.0, 0.0)
+            
+            def safe_bleu(weights, smoothing_fn=None, key=None) -> float:
+                try:
+                    if smoothing_fn is None:
+                        return float(self.sentence_bleu(refs, generated_tokens, weights=weights))
+                    return float(self.sentence_bleu(refs,
+                        generated_tokens,
+                        weights=weights,
+                        smoothing_function=smoothing_fn)
+                    )
+                except Exception as e:
+                    print(f'BLEU variant {key} failed: {e}')
+                    return 0.0
 
-            dict_scores['bleu_1'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=(1.0, 0.0, 0.0, 0.0), smoothing_function=smoothing.method1)
-            dict_scores['bleu_2'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=(0.5, 0.5, 0.0, 0.0), smoothing_function=smoothing.method1)
-            dict_scores['bleu_3'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=(0.33, 0.33, 0.33, 0.0), smoothing_function=smoothing.method1)
-            dict_scores['bleu_4'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=(var_weights), smoothing_function=smoothing.method1)
-            dict_scores['bleu_avg'] = sum([
-                dict_scores['bleu_1'],
-                dict_scores['bleu_2'],
-                dict_scores['bleu_3'],
+            smoothing = self.SmoothingFunction()
+
+            dict_scores['bleu_1'] = safe_bleu(weights=(1.0, 0.0, 0.0, 0.0), smoothing_fn=smoothing.method1, key='bleu_1')
+            dict_scores['bleu_2'] = safe_bleu(weights=(0.5, 0.5, 0.0, 0.0), smoothing_fn=smoothing.method1, key='bleu_2')
+            dict_scores['bleu_3'] = safe_bleu(weights=(0.33, 0.33, 0.33, 0.0), smoothing_fn=smoothing.method1, key='bleu_3')
+            dict_scores['bleu_4'] = safe_bleu(weights=(var_weights), smoothing_fn=smoothing.method1, key='bleu_4')
+            dict_scores['bleu_avg'] = (
+                dict_scores['bleu_1'] +
+                dict_scores['bleu_2'] +
+                dict_scores['bleu_3'] +
                 dict_scores['bleu_4']
-            ]) / 4.0
+            ) / 4.0
 
             # Calculating smoothing methods
-            dict_scores['bleu_smoothing_method0'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method0)
-            dict_scores['bleu_smoothing_method1'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method1)
-            dict_scores['bleu_smoothing_method2'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method2)
-            dict_scores['bleu_smoothing_method3'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method3)
-            dict_scores['bleu_smoothing_method4'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method4)
-            dict_scores['bleu_smoothing_method5'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method5)
-            dict_scores['bleu_smoothing_method6'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method6)
-            dict_scores['bleu_smoothing_method7'] = self.sentence_bleu([reference_tokens], generated_tokens, weights=var_weights, smoothing_function=smoothing.method7)
+            dict_scores['bleu_smoothing_method0'] = safe_bleu(weights=var_weights, smoothing_fn=smoothing.method0, key='m0')
+            dict_scores['bleu_smoothing_method1'] = safe_bleu(weights=var_weights, smoothing_fn=smoothing.method1, key='m1')
+            dict_scores['bleu_smoothing_method2'] = safe_bleu(weights=var_weights, smoothing_fn=smoothing.method2, key='m2')
+            dict_scores['bleu_smoothing_method3'] = safe_bleu(weights=var_weights, smoothing_fn=smoothing.method3, key='m3')
+            dict_scores['bleu_smoothing_method4'] = safe_bleu(weights=var_weights, smoothing_fn=smoothing.method4, key='m4')
+            dict_scores['bleu_smoothing_method5'] = safe_bleu(weights=var_weights, smoothing_fn=smoothing.method5, key='m5')
+            dict_scores['bleu_smoothing_method6'] = safe_bleu(weights=var_weights, smoothing_fn=smoothing.method6, key='m6')
+            dict_scores['bleu_smoothing_method7'] = safe_bleu(weights=var_weights, smoothing_fn=smoothing.method7, key='m7')
 
         except Exception as e:
             print(f'Error appeared: {str(e)}')
